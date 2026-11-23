@@ -2,14 +2,17 @@
 import { authClient} from "@/lib/auth-client"
 import type React from "react"
 
-import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { Suspense, useState } from "react"
 import { ShieldAlert } from "lucide-react"
 
 
 
-const DeviceAuthorizationPage = () => {
-    const [userCode, setUserCode] = useState("")
+const DeviceAuthorizationForm = () => {
+    const code = useSearchParams().get("user_code")?.replace(/-/g, "").toUpperCase()
+    const [userCode, setUserCode] = useState(
+      code && /^[A-Z0-9]{8}$/.test(code) ? code.slice(0, 4) + "-" + code.slice(4) : ""
+    )
     const [error, setError] = useState<string | null>(null)
     const [isLoading, setIsLoading] = useState(false)
     const router = useRouter()
@@ -23,13 +26,23 @@ const DeviceAuthorizationPage = () => {
       try {
         const formattedCode = userCode.trim().replace(/-/g , "").toUpperCase()
 
+        const { data: session, error: sessionError } = await authClient.getSession()
+        if (sessionError) throw sessionError
+        if (!session?.session) {
+          const redirect = `/device?user_code=${encodeURIComponent(formattedCode)}`
+          router.push(`/sign-in?redirect=${encodeURIComponent(redirect)}`)
+          return
+        }
+
         const response = await authClient.device({
             query:{user_code:formattedCode}
         })
         if(response.data){
             router.push(`/approve?user_code=${formattedCode}`)
+        } else {
+            setError("Invalid or expired code")
         }
-      } catch (error) {
+      } catch {
         setError("Invalid or expired code")
       }
       finally{
@@ -110,4 +123,10 @@ const DeviceAuthorizationPage = () => {
     )
 }
 
-export default DeviceAuthorizationPage
+export default function DeviceAuthorizationPage() {
+  return (
+    <Suspense>
+      <DeviceAuthorizationForm />
+    </Suspense>
+  )
+}

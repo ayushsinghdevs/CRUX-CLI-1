@@ -41,7 +41,8 @@ export async function getStoredToken() {
 export async function storeToken(token) {
   try {
     // Ensure config directory exists
-    await fs.mkdir(CONFIG_DIR, { recursive: true });
+    await fs.mkdir(CONFIG_DIR, { recursive: true, mode: 0o700 });
+    await fs.chmod(CONFIG_DIR, 0o700);
 
     // Store token with metadata
     const tokenData = {
@@ -55,7 +56,11 @@ export async function storeToken(token) {
       created_at: new Date().toISOString(),
     };
 
-    await fs.writeFile(TOKEN_FILE, JSON.stringify(tokenData, null, 2), "utf-8");
+    await fs.writeFile(TOKEN_FILE, JSON.stringify(tokenData, null, 2), {
+      encoding: "utf-8",
+      mode: 0o600,
+    });
+    await fs.chmod(TOKEN_FILE, 0o600);
     return true;
   } catch (error) {
     console.error(chalk.red("Failed to store token:"), error.message);
@@ -122,7 +127,7 @@ export async function loginAction(opts) {
 
     // TODO: Chanege this with Token Management Utils
     const existingToken = await getStoredToken();
-    const expired = isTokenExpired();
+    const expired = await isTokenExpired();
 
     if (existingToken && !expired) {
         const shouldReAuth = await confirm({
@@ -260,39 +265,27 @@ async function pollForToken(
                 });
 
                 if (data?.access_token) {
-                    console.log(
-                        chalk.bold.yellow(`Your access token: ${data.access_token}`)
-                    );
-
                     spinner.stop()
                     resolve(data);
                     return;
                 }
-                else if (error) {
-                    switch (error.error) {
-                        case "authorization_pending":
-                            // Continue polling
-                            break;
-                        case "slow_down":
-                            pollingInterval += 5;
-                            break;
-                        case "access_denied":
-                            console.error("Access was denied by the user");
-                            return;
-                        case "expired_token":
-                            console.error("The device code has expired. Please try again.");
-                            return;
-                        default:
-                            spinner.stop()
-                            logger.error(`Error: ${error.error_description}`);
-                            process.exit(1)
-                    }
+                switch (error?.error) {
+                    case "authorization_pending":
+                        break;
+                    case "slow_down":
+                        pollingInterval += 5;
+                        break;
+                    case "access_denied":
+                        throw new Error("Access was denied by the user");
+                    case "expired_token":
+                        throw new Error("The device code has expired. Please try again.");
+                    default:
+                        throw new Error(error?.error_description || "Device authorization did not return a token.");
                 }
-
             } catch (error) {
-               spinner.stop();
-              logger.error(`Network error: ${err.message}`);
-              process.exit(1);
+                spinner.stop();
+                reject(error);
+                return;
             }
 
             setTimeout(poll , pollingInterval * 1000)
@@ -332,7 +325,7 @@ export async function logoutAction() {
   }
 }
 
-export async function whoamiAction(opts) {
+export async function whoamiAction() {
   const token = await requireAuth();
   if (!token?.access_token) {
     console.log("No access token found. Please login.");
@@ -354,6 +347,11 @@ export async function whoamiAction(opts) {
       image: true,
     },
   });
+
+  if (!user) {
+    console.log("No matching session. Please run 'crux login' again.");
+    process.exit(1);
+  }
 
   // Output user session info
   console.log(
@@ -379,5 +377,4 @@ export const login = new Command("login")
 
 export const whoami = new Command("whoami")
   .description("Show current authenticated user")
-  .option("--server-url <url>", "The Better Auth server URL", URL)
   .action(whoamiAction);

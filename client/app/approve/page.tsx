@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { authClient } from "@/lib/auth-client"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useState, useEffect, Suspense } from "react"
+import { useState, useEffect, useRef, Suspense } from "react"
 import { CheckCircle, XCircle, Smartphone } from "lucide-react"
 import { toast } from "sonner"
 
@@ -20,6 +20,9 @@ const DeviceApprovalContent = () => {
     approve: false,
     deny: false
   })
+
+  const decisionInFlight = useRef(false)
+  const isDecisionPending = isProcessing.approve || isProcessing.deny
 
   // 1. Fixes "Cannot update a component (`Router`) while rendering"
   useEffect(() => {
@@ -42,53 +45,25 @@ const DeviceApprovalContent = () => {
     return null;
   }
 
-  const handleApprove = async()=>{
-    setIsProcessing({
-      approve:true,
-      deny:false
-    })
+  const handleDecision = async (decision: "approve" | "deny") => {
+    if (isDecisionPending || decisionInFlight.current) return
+    decisionInFlight.current = true
+    const approving = decision === "approve"
+    setIsProcessing({ approve: approving, deny: !approving })
 
     try {
-      toast.loading("Approving device..." , {id:"loading"})
-      await authClient.device.approve({
-        userCode:userCode!
-      })
+      toast.loading(approving ? "Approving device..." : "Denying device...", { id: decision })
+      const { error } = await authClient.device[decision]({ userCode: userCode! })
+      if (error) throw error
 
-      toast.dismiss("loading")
-      toast.success("Device approved successfully")
+      toast.success(approving ? "Device approved successfully" : "Oops! Device denied to approve!", { id: decision })
       router.push("/")
-      
-    } catch (error) {
-      toast.error("Failed to approve")
+    } catch {
+      toast.error(approving ? "Failed to approve" : "Failed to deny device", { id: decision })
+    } finally {
+      decisionInFlight.current = false
+      setIsProcessing({ approve: false, deny: false })
     }
-    finally{
-      setIsProcessing({
-        approve:false,
-        deny:false
-      })
-    }
-  }
-
-  const handleDeny = async () => {
-    setIsProcessing({
-      approve: false,
-      deny: true,
-    })
-    try {
-      toast.loading("Denying device...",{id:"deny"})
-      await authClient.device.deny({
-        userCode: userCode!,
-      })
-      toast.dismiss("deny")
-      toast.success("Oops! Device denied to approve!")
-      router.push("/")
-    } catch (error) {
-      toast.error("Failed to deny device")
-    }
-    setIsProcessing({
-      approve: false,
-      deny: false,
-    })
   }
 
   return (
@@ -146,8 +121,8 @@ const DeviceApprovalContent = () => {
           {/* Action Buttons */}
           <div className="space-y-3">
             <Button
-              onClick={handleApprove}
-              disabled={isProcessing.approve}
+              onClick={() => handleDecision("approve")}
+              disabled={isDecisionPending}
               className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
             >
               {isProcessing.approve ? (
@@ -164,8 +139,8 @@ const DeviceApprovalContent = () => {
             </Button>
 
             <Button
-              onClick={handleDeny}
-              disabled={isProcessing.deny}
+              onClick={() => handleDecision("deny")}
+              disabled={isDecisionPending}
               className="w-full h-11 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
             >
               {isProcessing.deny ? (

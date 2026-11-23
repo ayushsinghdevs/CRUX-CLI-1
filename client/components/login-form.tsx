@@ -1,16 +1,12 @@
 "use client";
 
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import { Button } from "./ui/button";
 import { Card , CardContent } from "./ui/card";
 import { authClient } from "@/lib/auth-client";
-import { useState } from "react";
 
 
-export const LoginForm = ()=>{
-    const router = useRouter()
-    const [isLoading, setIsLoading] = useState(false);
+export const LoginForm = ({ callbackPath }: { callbackPath: string }) => {
 
     return (
   <div className="min-h-screen bg-[#FAFAFC] flex items-center justify-center px-6 py-10">
@@ -75,7 +71,7 @@ export const LoginForm = ()=>{
               type="button"
               onClick={() => authClient.signIn.social({
                   provider: "github",
-                  callbackURL: "http://localhost:3000",
+                  callbackURL: new URL(callbackPath, window.location.origin).href,
                 })
               }
             >
