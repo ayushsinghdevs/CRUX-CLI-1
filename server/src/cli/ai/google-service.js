@@ -1,12 +1,12 @@
 import {google} from "@ai-sdk/google";
-import {stremText} from "ai";
+import {streamText} from "ai";
 import {config} from "../../config/google.config.js"
 import chalk from "chalk"
 
 export class AIService{
     constructor(){
         if(!config.googleApiKey){
-            throw new Error("GOOGLE_API_KEY is not set in env")
+            throw new Error("GOOGLE_GENERATIVE_AI_API_KEY is not set in env")
         }
 
         this.model = google(config.model , {
@@ -30,7 +30,7 @@ export class AIService{
             const streamConfig = {
                 model:this.model,
                 messages:messages,
-
+                tools,
             }
 
             const result = streamText(streamConfig);
@@ -44,16 +44,16 @@ export class AIService{
                 }
             }
 
-            const fullResult = result;
+            const [finishResponse, usage] = await Promise.all([result.finishReason, result.usage]);
 
             return {
                 content:fullResponse,
-                finishResponse:fullResult.finishReason,
-                usage:fullResult.usage
+                finishResponse,
+                usage
             }
         } catch (error) {
-            console.error(chalk.red("AI Service Error:"). error.message);
-      throw error;
+            console.error(chalk.red("AI Service Error:"), error.message);
+            throw error;
         }
     }
 
@@ -68,7 +68,7 @@ export class AIService{
         let fullResponse = "";
         await this.sendMessage(messages ,(chunk)=>{
             fullResponse +=chunk
-        })
+        }, tools)
 
         return fullResponse
     }
