@@ -15,8 +15,10 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@ai-sdk/google": "^4.0.126",
     "@clack/prompts": "^1.9.0",
     "@prisma/client": "^6.19.3",
+    "ai": "^7.0.181",
     "better-auth": "^1.7.26",
     "boxen": "^9.0.0",
     "chalk": "^6.0.1",
