@@ -1,12 +1,12 @@
 import {google} from "@ai-sdk/google";
-import {streamText} from "ai";
+import { convertToModelMessages, generateObject, streamText } from "ai";
 import {config} from "../../config/google.config.js"
 import chalk from "chalk"
 
 export class AIService{
     constructor(){
         if(!config.googleApiKey){
-            throw new Error("GOOGLE_GENERATIVE_AI_API_KEY is not set in env")
+            throw new Error("GOOGLE_API_KEY is not set in env")
         }
 
         this.model = google(config.model , {
