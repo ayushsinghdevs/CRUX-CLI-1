@@ -11,9 +11,8 @@ export class AIService{
 
         this.model = google(config.model , {
             apiKey:config.googleApiKey,
-        })
+        });
     }
-
 
     /**
      * Send a message and get streaming responser
@@ -31,6 +30,15 @@ export class AIService{
                 model:this.model,
                 messages:messages,
                 tools,
+            };
+
+            if (tools && Object.keys(tools).length > 0) {
+              streamConfig.tools = tools;
+              streamConfig.maxSteps = 5; // Allow up to 5 tool call steps
+
+              console.log(
+              chalk.gray(`[DEBUG] Tools enabled: ${Object.keys(tools).join(", ")}`)
+              );
             }
 
             const result = streamText(streamConfig);
@@ -44,32 +52,81 @@ export class AIService{
                 }
             }
 
-            const [finishResponse, usage] = await Promise.all([result.finishReason, result.usage]);
+            const fullResult = result;
+
+            const toolCalls = [];
+            const toolResults = [];
+
+            if(fullResult.steps && Array.isArray(fullResult.steps)){
+              for(const step of fullResult.steps){
+                if(step.toolCalls && step.toolCalls.length>0){
+                  for(const toolCall of step.toolCalls){
+                    toolCalls.push(toolCall);
+
+                    if(onToolCall){
+                      onToolCall(toolCall)
+                    }
+                  }
+                }
+
+                if(step.toolResults && step.toolResults.length > 0){
+                  toolResults.push(...step.toolResults)
+                }
+              }
+            }
 
             return {
-                content:fullResponse,
-                finishResponse,
-                usage
-            }
-        } catch (error) {
+              content: fullResponse,
+              finishResponse: fullResult.finishReason,
+              usage: fullResult.usage,
+              toolCalls,
+              toolResults,
+              steps:fullResult.steps
+            };
+          } catch (error) {
             console.error(chalk.red("AI Service Error:"), error.message);
             throw error;
+          }
         }
-    }
 
     /**
      * Get a non-streaming response
-     * @param {Array} messages
-     * @param {Object} tools
-     * @returns {Promise<String>}
+     * @param {Array} messages - Array of message objects
+     * @param {Object} tools - Optional tools
+     * @returns {Promise<String>} Response text
      */
 
     async getMessage(messages , tools=undefined){
-        let fullResponse = "";
-        await this.sendMessage(messages ,(chunk)=>{
-            fullResponse +=chunk
-        }, tools)
+      let fullResponse = "";
+      const result = await this.sendMessage(messages ,(chunk) => {
+         fullResponse +=chunk
+       } , tools);
 
-        return fullResponse
+        return result.content;
     }
+
+
+    /**
+   * Generate structured output using a zod schema
+   * @param {Object} schema - Zod Schema
+   * @param {string} prompt - Prompt for generation
+   * @returns {Promise<Object>} Parsed object matching the schema
+   * 
+   */
+  async generateStructured(schema , prompt){
+    try {
+      const result = await generateObject({
+        model:this.model,
+        schema:schema,
+        prompt:prompt
+      })
+
+      return result.object
+    } catch (error) {
+       console.error(chalk.red("AI Structured Generation Error:"), error.message);
+        throw error;
+    }
+  }
+
 }
+
